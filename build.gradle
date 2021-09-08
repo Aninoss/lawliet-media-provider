@@ -28,7 +28,7 @@ dependencies {
     implementation 'com.google.guava:guava:30.1.1-jre'
     implementation 'redis.clients:jedis:3.6.3'
     implementation 'com.github.Aninoss:imageboard-api:756e6946db'
-    implementation 'commons-io:commons-io:20030203.000550'
+    implementation 'commons-io:commons-io:2.6'
 
     implementation 'com.fasterxml.jackson.module:jackson-module-parameter-names:2.12.5'
     implementation 'com.fasterxml.jackson.core:jackson-core:2.12.5'

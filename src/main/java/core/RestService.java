@@ -32,18 +32,18 @@ public class RestService {
     }
 
     @GET
-    @Path("/media/rule34/{arg0}/{arg1}")
-    @Produces(MediaType.APPLICATION_OCTET_STREAM)
-    public Response ping(@PathParam("arg0") String arg0, @PathParam("arg1") String arg1) {
-        if (StringUtil.stringIsInt(arg0) && fileIsVideo(arg1)) {
-            String videoUrl = "https://api-cdn-mp4.rule34.xxx/images/" + arg0 + "/" + arg1;
-            String videoFileDir = "/cdn/media/rule34/" + arg0;
-            File videoFile = videoDownloader.downloadVideo(videoUrl, videoFileDir, arg1);
-            saveVideoRequested("rule34/" + arg0 + "/" + arg1);
-            return Response.ok(videoFile, MediaType.APPLICATION_OCTET_STREAM)
-                    .build();
+    @Path("/request")
+    public Response ping(@HeaderParam("X-Original-URI") String uri) {
+        if (uri.contains("/")) {
+            String[] parts = uri.substring(1).split("/");
+            if (parts.length == 4 && parts[0].equals("media") && parts[1].equals("rule34") && StringUtil.stringIsInt(parts[2]) && fileIsVideo(parts[3])) {
+                String videoUrl = "https://api-cdn-mp4.rule34.xxx/images/" + parts[2] + "/" + parts[3];
+                String videoFileDir = "/cdn/media/rule34/" + parts[2];
+                videoDownloader.downloadVideo(videoUrl, videoFileDir, parts[3]);
+                saveVideoRequested("rule34/" + parts[2] + "/" + parts[3]);
+            }
         }
-        return Response.status(403).build();
+        return Response.status(200).build();
     }
 
     private void saveVideoRequested(String id) {

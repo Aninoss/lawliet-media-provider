@@ -26,7 +26,9 @@ public class VideoDownloader {
                 try {
                     FileUtils.copyURLToFile(
                             new URL(videoUrl),
-                            videoFile
+                            videoFile,
+                            3_000,
+                            20_000
                     );
                 } catch (IOException e) {
                     LOGGER.error("Exception on video download", e);
