@@ -1,11 +1,17 @@
 package core;
 
-import java.io.File;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.Objects;
 import jakarta.inject.Singleton;
-import jakarta.ws.rs.*;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.HeaderParam;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
@@ -14,6 +20,8 @@ import util.StringUtil;
 @Path("")
 @Singleton
 public class RestService {
+
+    private final static Logger LOGGER = LoggerFactory.getLogger(RestService.class);
 
     private final JedisPool jedisPool = new JedisPool(
             buildPoolConfig(),
@@ -33,21 +41,41 @@ public class RestService {
 
     @GET
     @Path("/request")
-    public Response ping(@HeaderParam("X-Original-URI") String uri) {
-        if (uri.contains("/")) {
-            String[] parts = uri.substring(1).split("/");
-            if (parts.length == 4 && parts[0].equals("media") && parts[1].equals("rule34") && StringUtil.stringIsInt(parts[2]) && fileIsVideo(parts[3])) {
-                String videoUrl = "https://api-cdn-mp4.rule34.xxx/images/" + parts[2] + "/" + parts[3];
-                String videoFileDir = "/cdn/media/rule34/" + parts[2];
-                videoDownloader.downloadVideo(videoUrl, videoFileDir, parts[3]);
-                saveVideoRequested("rule34/" + parts[2] + "/" + parts[3]);
+    public Response request(@HeaderParam("X-Original-URI") String uri) {
+        try {
+            if (uri.contains("/")) {
+                String[] parts = uri.substring(1).split("/");
+                if (parts.length == 4 &&
+                        parts[0].equals("media") &&
+                        parts[1].equals("rule34") &&
+                        StringUtil.stringIsInt(parts[2]) &&
+                        fileIsVideo(parts[3]) &&
+                        isResponsible(parts[2], parts[3])
+                ) {
+                    String videoUrl = "https://api-cdn-mp4.rule34.xxx/images/" + parts[2] + "/" + parts[3];
+                    String videoFileDir = "/cdn/media/rule34/" + parts[2];
+                    videoDownloader.downloadVideo(videoUrl, videoFileDir, parts[3]);
+                    saveVideoRequested("rule34/" + parts[2] + "/" + parts[3]);
+                    return Response.status(200).build();
+                }
             }
+            return Response.status(403).build();
+        } catch (Throwable e) {
+            LOGGER.error("Video request error", e);
+            return Response.status(500).build();
         }
-        return Response.status(200).build();
+    }
+
+    private boolean isResponsible(String dir, String id) {
+        int maxShards = Integer.parseInt(System.getenv("MAX_SHARDS"));
+        int fileShard = Math.abs(Objects.hash(dir, id)) % maxShards;
+        return Arrays.stream(System.getenv("SHARDS").split(","))
+                .map(Integer::parseInt)
+                .anyMatch(shard -> shard == fileShard);
     }
 
     private void saveVideoRequested(String id) {
-        try(Jedis jedis = jedisPool.getResource()) {
+        try (Jedis jedis = jedisPool.getResource()) {
             jedis.set(id, Instant.now().toString());
         }
     }
