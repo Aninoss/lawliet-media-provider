@@ -30,7 +30,7 @@ public class RestService {
     );
 
     private final LockManager lockManager = new LockManager();
-    private final VideoDownloader videoDownloader = new VideoDownloader(lockManager);
+    private final VideoDownloader videoDownloader = new VideoDownloader(lockManager, jedisPool);
 
     @GET
     @Path("/ping")
@@ -52,10 +52,11 @@ public class RestService {
                         fileIsVideo(parts[3]) &&
                         isResponsible(parts[2], parts[3])
                 ) {
-                    String videoUrl = "https://api-cdn-mp4.rule34.xxx/images/" + parts[2] + "/" + parts[3];
-                    String videoFileDir = "/cdn/media/rule34/" + parts[2];
-                    videoDownloader.downloadVideo(videoUrl, videoFileDir, parts[3]);
-                    saveVideoRequested("rule34/" + parts[2] + "/" + parts[3]);
+                    String videoDir = parts[2];
+                    String videoFilename = parts[3];
+                    String videoUrl = "https://api-cdn-mp4.rule34.xxx/images/" + videoDir + "/" + videoFilename;
+                    videoDownloader.downloadVideo(videoUrl, videoDir, videoFilename);
+                    saveVideoRequested("rule34/" + videoDir + "/" + videoFilename);
                     return Response.status(200).build();
                 }
             }
@@ -66,9 +67,9 @@ public class RestService {
         }
     }
 
-    private boolean isResponsible(String dir, String id) {
+    private boolean isResponsible(String videoDir, String videoFilename) {
         int maxShards = Integer.parseInt(System.getenv("MAX_SHARDS"));
-        int fileShard = Math.abs(Objects.hash(dir, id)) % maxShards;
+        int fileShard = Math.abs(Objects.hash(videoDir, videoFilename)) % maxShards;
         return Arrays.stream(System.getenv("SHARDS").split(","))
                 .map(Integer::parseInt)
                 .anyMatch(shard -> shard == fileShard);
