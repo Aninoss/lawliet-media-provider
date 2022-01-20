@@ -25,7 +25,9 @@ public class VideoDownloader {
     public VideoDownloader(LockManager lockManager, JedisPool jedisPool) {
         this.lockManager = lockManager;
         this.jedisPool = jedisPool;
-        startCacheCleaner();
+        if (Boolean.parseBoolean(System.getenv("CACHE_CLEANER"))) {
+            startCacheCleaner();
+        }
     }
 
     public void downloadVideo(String videoUrl, String videoDir, String videoFilename) {
@@ -40,7 +42,7 @@ public class VideoDownloader {
                             new URL(videoUrl),
                             videoFile,
                             3_000,
-                            20_000
+                            30_000
                     );
                 } catch (IOException e) {
                     LOGGER.error("Exception on video download", e);
