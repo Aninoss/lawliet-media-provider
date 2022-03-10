@@ -4,10 +4,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Objects;
 import jakarta.inject.Singleton;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.HeaderParam;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.slf4j.Logger;
@@ -31,6 +28,7 @@ public class RestService {
 
     private final LockManager lockManager = new LockManager();
     private final VideoDownloader videoDownloader = new VideoDownloader(lockManager, jedisPool);
+    private final HttpClient httpClient = new HttpClient();
 
     @GET
     @Path("/ping")
@@ -64,6 +62,27 @@ public class RestService {
         } catch (Throwable e) {
             LOGGER.error("Video request error", e);
             return Response.status(500).build();
+        }
+    }
+
+    @GET
+    @Path("/proxy/{url}/{auth}")
+    @Consumes(MediaType.TEXT_PLAIN)
+    public Response cachedProxy(@PathParam("url") String url, @PathParam("auth") String auth) {
+        try {
+            if (System.getenv("AUTH").equals(auth)) {
+                HttpResponse httpResponse = httpClient.request(url);
+                if (httpResponse.getCode() / 100 == 2) {
+                    return Response.ok(httpResponse.getBody()).build();
+                } else {
+                    return Response.status(httpResponse.getCode()).build();
+                }
+            } else {
+                return Response.status(403).build();
+            }
+        } catch (Throwable e) {
+            LOGGER.error("Error in /proxy", e);
+            throw e;
         }
     }
 
