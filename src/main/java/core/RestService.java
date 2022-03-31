@@ -3,6 +3,7 @@ package core;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -26,6 +27,10 @@ public class RestService {
             Integer.parseInt(System.getenv("REDIS_PORT"))
     );
 
+    private final Pattern subdomainPattern = Pattern.compile("^[a-zA-Z0-9-]*$");
+    private final Pattern videoDirPattern = Pattern.compile("^[0-9]*$");
+    private final Pattern videoFilePattern = Pattern.compile("^[a-z0-9.]*$");
+
     private final LockManager lockManager = new LockManager();
     private final VideoDownloader videoDownloader = new VideoDownloader(lockManager, jedisPool);
     private final HttpClient httpClient = new HttpClient();
@@ -43,19 +48,32 @@ public class RestService {
         try {
             if (uri.contains("/")) {
                 String[] parts = uri.substring(1).split("/");
-                if (parts.length == 4 &&
-                        parts[0].equals("media") &&
-                        parts[1].equals("rule34") &&
-                        StringUtil.stringIsInt(parts[2]) &&
-                        fileIsVideo(parts[3]) &&
-                        isResponsible(parts[2], parts[3])
-                ) {
-                    String videoDir = parts[2];
-                    String videoFilename = parts[3];
-                    String videoUrl = "https://api-cdn-mp4.rule34.xxx/images/" + videoDir + "/" + videoFilename;
-                    videoDownloader.downloadVideo(videoUrl, videoDir, videoFilename);
-                    saveVideoRequested("rule34/" + videoDir + "/" + videoFilename);
-                    return Response.status(200).build();
+                if (parts.length == 4) {
+                    String subdomain;
+                    String videoDir;
+                    String videoFile;
+                    if (parts[3].contains("?s=")) {
+                        subdomain = parts[3].split("\\?s=")[1];
+                        videoDir = parts[2];
+                        videoFile = parts[3].split("\\?s=")[0];
+                    } else {
+                        subdomain = "api-cdn-mp4";
+                        videoDir = parts[2];
+                        videoFile = parts[3];
+                    }
+                    if (parts[0].equals("media") &&
+                            parts[1].equals("rule34") &&
+                            subdomainPattern.matcher(subdomain).matches() &&
+                            videoDirPattern.matcher(videoDir).matches() &&
+                            videoFilePattern.matcher(videoFile).matches() &&
+                            fileIsVideo(videoFile) &&
+                            isResponsible(videoDir, videoFile)
+                    ) {
+                        String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
+                        videoDownloader.downloadVideo(videoUrl, videoDir, videoFile);
+                        saveVideoRequested("rule34/" + videoDir + "/" + videoFile);
+                        return Response.status(200).build();
+                    }
                 }
             }
             return Response.status(403).build();

@@ -34,11 +34,11 @@ public class HttpClient {
                         .setBody(response.body().string());
             }
         } catch (InterruptedIOException e) {
-            LOGGER.error("Web proxy time out ({})", domain);
+            LOGGER.error("Web time out ({})", domain);
             return new HttpResponse()
                     .setCode(500);
         } catch (Throwable e) {
-            LOGGER.error("Web proxy error ({})", domain, e);
+            LOGGER.error("Web error ({})", domain, e);
             return new HttpResponse()
                     .setCode(500);
         }
