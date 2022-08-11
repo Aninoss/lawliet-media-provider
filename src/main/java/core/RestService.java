@@ -105,11 +105,15 @@ public class RestService {
     }
 
     private boolean isResponsible(String videoDir, String videoFilename) {
-        int maxShards = Integer.parseInt(System.getenv("MAX_SHARDS"));
-        int fileShard = Math.abs(Objects.hash(videoDir, videoFilename)) % maxShards;
-        return Arrays.stream(System.getenv("SHARDS").split(","))
-                .map(Integer::parseInt)
-                .anyMatch(shard -> shard == fileShard);
+        if (Boolean.parseBoolean(System.getenv("SHARD_BLOCKING"))) {
+            int maxShards = Integer.parseInt(System.getenv("MAX_SHARDS"));
+            int fileShard = Math.abs(Objects.hash(videoDir, videoFilename)) % maxShards;
+            return Arrays.stream(System.getenv("SHARDS").split(","))
+                    .map(Integer::parseInt)
+                    .anyMatch(shard -> shard == fileShard);
+        } else {
+            return true;
+        }
     }
 
     private void saveVideoRequested(String id) {
