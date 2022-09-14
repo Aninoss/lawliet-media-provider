@@ -1,5 +1,6 @@
 package core;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Objects;
@@ -61,14 +62,7 @@ public class RestService {
                         videoDir = parts[2];
                         videoFile = parts[3];
                     }
-                    if (parts[0].equals("media") &&
-                            parts[1].equals("rule34") &&
-                            subdomainPattern.matcher(subdomain).matches() &&
-                            videoDirPattern.matcher(videoDir).matches() &&
-                            videoFilePattern.matcher(videoFile).matches() &&
-                            fileIsVideo(videoFile) &&
-                            isResponsible(videoDir, videoFile)
-                    ) {
+                    if (checkRequestUri(parts[0], parts[1], subdomain, videoDir, videoFile)) {
                         String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
                         videoDownloader.downloadVideo(videoUrl, videoDir, videoFile);
                         saveVideoRequested("rule34/" + videoDir + "/" + videoFile);
@@ -84,9 +78,31 @@ public class RestService {
     }
 
     @GET
+    @Path("/media/{domain}/{videoDir}/{videoFileAndSubdomainRaw}")
+    public Response redirect(@PathParam("domain") String domain,
+                             @PathParam("videoDir") String videoDir,
+                             @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw) {
+        try {
+            VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw);
+            String subdomain = videoFileAndSubdomain.subdomain;
+            String videoFile = videoFileAndSubdomain.videoFile;
+
+            if (checkRequestUri("media", domain, subdomain, videoDir, videoFile)) {
+                String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
+                return Response.temporaryRedirect(new URI(videoUrl)).build();
+            } else {
+                return Response.status(403).build();
+            }
+        } catch (Throwable e) {
+            LOGGER.error("Redirect error", e);
+            return Response.status(500).build();
+        }
+    }
+
+    @GET
     @Path("/proxy/{url}/{auth}")
     @Consumes(MediaType.TEXT_PLAIN)
-    public Response cachedProxy(@PathParam("url") String url, @PathParam("auth") String auth) {
+    public Response proxy(@PathParam("url") String url, @PathParam("auth") String auth) {
         try {
             if (System.getenv("AUTH").equals(auth)) {
                 HttpResponse httpResponse = httpClient.request(url);
@@ -102,6 +118,25 @@ public class RestService {
             LOGGER.error("Error in /proxy", e);
             throw e;
         }
+    }
+
+    private VideoFileAndSubdomain extractVideoFileSubdomain(String videoFileAndSubdomain) {
+        if (videoFileAndSubdomain.contains("?s=")) {
+            String[] splits = videoFileAndSubdomain.split("\\?s=");
+            return new VideoFileAndSubdomain(splits[0], splits[1]);
+        } else {
+            return new VideoFileAndSubdomain(videoFileAndSubdomain, "api-cdn-us-mp4");
+        }
+    }
+
+    private boolean checkRequestUri(String root, String domain, String subdomain, String videoDir, String videoFile) {
+        return root.equals("media") &&
+                domain.equals("rule34") &&
+                subdomainPattern.matcher(subdomain).matches() &&
+                videoDirPattern.matcher(videoDir).matches() &&
+                videoFilePattern.matcher(videoFile).matches() &&
+                fileIsVideo(videoFile) &&
+                isResponsible(videoDir, videoFile);
     }
 
     private boolean isResponsible(String videoDir, String videoFilename) {
@@ -135,6 +170,19 @@ public class RestService {
         poolConfig.setMaxIdle(32);
         poolConfig.setMinIdle(0);
         return poolConfig;
+    }
+
+
+    private static class VideoFileAndSubdomain {
+
+        private final String videoFile;
+        private final String subdomain;
+
+        public VideoFileAndSubdomain(String videoFile, String subdomain) {
+            this.videoFile = videoFile;
+            this.subdomain = subdomain;
+        }
+
     }
 
 }
