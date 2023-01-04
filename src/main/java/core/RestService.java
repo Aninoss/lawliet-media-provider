@@ -109,6 +109,7 @@ public class RestService {
                 if (httpResponse.getCode() / 100 == 2) {
                     return Response.ok(httpResponse.getBody()).build();
                 } else {
+                    LOGGER.warn("Proxy: error response {} for url {}", httpResponse.getCode(), url);
                     return Response.status(httpResponse.getCode()).build();
                 }
             } else {
