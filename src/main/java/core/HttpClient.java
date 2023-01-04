@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 public class HttpClient {
 
     private final static Logger LOGGER = LoggerFactory.getLogger(HttpClient.class);
-    public static final String USER_AGENT = "Lawliet Discord Bot made by Aninoss#7220";
+    public static final String USER_AGENT = "Lawliet Discord Bot by Aninoss#7220";
 
     private final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
