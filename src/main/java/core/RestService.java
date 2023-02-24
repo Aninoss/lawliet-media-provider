@@ -28,9 +28,11 @@ public class RestService {
             Integer.parseInt(System.getenv("REDIS_PORT"))
     );
 
-    private final Pattern subdomainPattern = Pattern.compile("^[a-zA-Z0-9-]*$");
-    private final Pattern videoDirPattern = Pattern.compile("^[0-9]*$");
-    private final Pattern videoFilePattern = Pattern.compile("^[a-z0-9.]*$");
+    private final Pattern SUBDOMAIN_PATTERN = Pattern.compile("^[a-zA-Z0-9-]*$");
+    private final Pattern VIDEO_DIR_PATTERN = Pattern.compile("^[0-9]*$");
+    private final Pattern RULE34_VIDEO_FILE_PATTERN = Pattern.compile("^[a-z0-9.]*$");
+
+    private final String DEFAULT_SUBDOMAIN_RULE34 = "api-cdn-mp4";
 
     private final LockManager lockManager = new LockManager();
     private final VideoDownloader videoDownloader = new VideoDownloader(lockManager, jedisPool);
@@ -47,54 +49,59 @@ public class RestService {
     @Path("/request")
     public Response request(@HeaderParam("X-Original-URI") String uri) {
         try {
-            if (uri.contains("/")) {
-                String[] parts = uri.substring(1).split("/");
-                if (parts.length == 4) {
-                    String subdomain;
-                    String videoDir;
-                    String videoFile;
-                    if (parts[3].contains("?s=")) {
-                        subdomain = parts[3].split("\\?s=")[1];
-                        videoDir = parts[2];
-                        videoFile = parts[3].split("\\?s=")[0];
-                    } else {
-                        subdomain = "api-cdn-mp4";
-                        videoDir = parts[2];
-                        videoFile = parts[3];
-                    }
-                    if (checkRequestUri(parts[0], parts[1], subdomain, videoDir, videoFile)) {
-                        String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
-                        videoDownloader.downloadVideo(videoUrl, videoDir, videoFile);
-                        saveVideoRequested("rule34/" + videoDir + "/" + videoFile);
-                        return Response.status(200).build();
-                    }
-                }
+            if (!uri.contains("/")) {
+                return Response.status(403).build();
             }
-            return Response.status(403).build();
+
+            String[] parts = uri.substring(1).split("/");
+            if (parts.length != 4) {
+                return Response.status(403).build();
+            }
+
+            if (parts[1].equals("rule34")) {
+                return requestRule34(parts);
+            } else {
+                return Response.status(403).build();
+            }
         } catch (Throwable e) {
             LOGGER.error("Video request error", e);
             return Response.status(500).build();
         }
     }
 
+    private Response requestRule34(String[] parts) {
+        VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(parts[3], DEFAULT_SUBDOMAIN_RULE34);
+        String subdomain = videoFileAndSubdomain.subdomain;
+        String videoDir = parts[2];
+        String videoFile = videoFileAndSubdomain.videoFile;
+
+        if (!checkRequestUriRule34(subdomain, videoDir, videoFile)) {
+            return Response.status(403).build();
+        }
+
+        String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
+        videoDownloader.downloadVideo(videoUrl, videoDir, videoFile);
+        saveVideoRequested("rule34/" + videoDir + "/" + videoFile);
+        return Response.status(200).build();
+    }
+
     @GET
-    @Path("/media/{domain}/{videoDir}/{videoFileAndSubdomainRaw}")
-    public Response redirect(@PathParam("domain") String domain,
-                             @PathParam("videoDir") String videoDir,
-                             @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw) {
+    @Path("/media/rule34/{videoDir}/{videoFileAndSubdomainRaw}")
+    public Response redirectRule34(@PathParam("videoDir") String videoDir,
+                                   @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw) {
         try {
-            VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw);
+            VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw, DEFAULT_SUBDOMAIN_RULE34);
             String subdomain = videoFileAndSubdomain.subdomain;
             String videoFile = videoFileAndSubdomain.videoFile;
 
-            if (checkRequestUri("media", domain, subdomain, videoDir, videoFile)) {
+            if (checkRequestUriRule34(subdomain, videoDir, videoFile)) {
                 String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
                 return Response.temporaryRedirect(new URI(videoUrl)).build();
             } else {
                 return Response.status(403).build();
             }
         } catch (Throwable e) {
-            LOGGER.error("Redirect error", e);
+            LOGGER.error("Rule34 redirect error", e);
             return Response.status(500).build();
         }
     }
@@ -104,16 +111,16 @@ public class RestService {
     @Consumes(MediaType.TEXT_PLAIN)
     public Response proxy(@PathParam("url") String url, @PathParam("auth") String auth) {
         try {
-            if (System.getenv("AUTH").equals(auth)) {
-                HttpResponse httpResponse = httpClient.request(url);
-                if (httpResponse.getCode() / 100 == 2) {
-                    return Response.ok(httpResponse.getBody()).build();
-                } else {
-                    LOGGER.warn("Proxy: error response {} for url {}", httpResponse.getCode(), url);
-                    return Response.status(httpResponse.getCode()).build();
-                }
-            } else {
+            if (!System.getenv("AUTH").equals(auth)) {
                 return Response.status(403).build();
+            }
+
+            HttpResponse httpResponse = httpClient.request(url);
+            if (httpResponse.getCode() / 100 == 2) {
+                return Response.ok(httpResponse.getBody()).build();
+            } else {
+                LOGGER.warn("Proxy: error response {} for url {}", httpResponse.getCode(), url);
+                return Response.status(httpResponse.getCode()).build();
             }
         } catch (Throwable e) {
             LOGGER.error("Error in /proxy", e);
@@ -121,35 +128,33 @@ public class RestService {
         }
     }
 
-    private VideoFileAndSubdomain extractVideoFileSubdomain(String videoFileAndSubdomain) {
+    private VideoFileAndSubdomain extractVideoFileSubdomain(String videoFileAndSubdomain, String defaultSubdomain) {
         if (videoFileAndSubdomain.contains("?s=")) {
             String[] splits = videoFileAndSubdomain.split("\\?s=");
             return new VideoFileAndSubdomain(splits[0], splits[1]);
         } else {
-            return new VideoFileAndSubdomain(videoFileAndSubdomain, "api-cdn-us-mp4");
+            return new VideoFileAndSubdomain(videoFileAndSubdomain, defaultSubdomain);
         }
     }
 
-    private boolean checkRequestUri(String root, String domain, String subdomain, String videoDir, String videoFile) {
-        return root.equals("media") &&
-                domain.equals("rule34") &&
-                subdomainPattern.matcher(subdomain).matches() &&
-                videoDirPattern.matcher(videoDir).matches() &&
-                videoFilePattern.matcher(videoFile).matches() &&
+    private boolean checkRequestUriRule34(String subdomain, String videoDir, String videoFile) {
+        return SUBDOMAIN_PATTERN.matcher(subdomain).matches() &&
+                VIDEO_DIR_PATTERN.matcher(videoDir).matches() &&
+                RULE34_VIDEO_FILE_PATTERN.matcher(videoFile).matches() &&
                 fileIsVideo(videoFile) &&
                 isResponsible(videoDir, videoFile);
     }
 
     private boolean isResponsible(String videoDir, String videoFilename) {
-        if (Boolean.parseBoolean(System.getenv("SHARD_BLOCKING"))) {
-            int maxShards = Integer.parseInt(System.getenv("MAX_SHARDS"));
-            int fileShard = Math.abs(Objects.hash(videoDir, videoFilename)) % maxShards;
-            return Arrays.stream(System.getenv("SHARDS").split(","))
-                    .map(Integer::parseInt)
-                    .anyMatch(shard -> shard == fileShard);
-        } else {
+        if (!Boolean.parseBoolean(System.getenv("SHARD_BLOCKING"))) {
             return true;
         }
+
+        int maxShards = Integer.parseInt(System.getenv("MAX_SHARDS"));
+        int fileShard = Math.abs(Objects.hash(videoDir, videoFilename)) % maxShards;
+        return Arrays.stream(System.getenv("SHARDS").split(","))
+                .map(Integer::parseInt)
+                .anyMatch(shard -> shard == fileShard);
     }
 
     private void saveVideoRequested(String id) {
