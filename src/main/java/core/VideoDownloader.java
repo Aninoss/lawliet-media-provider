@@ -17,7 +17,8 @@ import redis.clients.jedis.JedisPool;
 public class VideoDownloader {
 
     private final static Logger LOGGER = LoggerFactory.getLogger(VideoDownloader.class);
-    private static final String VIDEO_ROOT_DIR = "/cdn/media/rule34";
+    private static final String VIDEO_ROOT_DIR = "/cdn/media";
+    private static final Duration VIDEO_CACHE_MAX_AGE = Duration.ofDays(30);
 
     private final LockManager lockManager;
     private final JedisPool jedisPool;
@@ -30,8 +31,8 @@ public class VideoDownloader {
         }
     }
 
-    public void downloadVideo(String videoUrl, String videoDir, String videoFilename) {
-        String videoFullDir = VIDEO_ROOT_DIR + "/" + videoDir;
+    public void downloadVideo(String domain, String videoUrl, String videoDir, String videoFilename) {
+        String videoFullDir = VIDEO_ROOT_DIR + "/" + domain + "/" + videoDir;
         File videoFile = new File(videoFullDir + "/" + videoFilename);
         synchronized (lockManager.get(videoUrl)) {
             if (!videoFile.exists()) {
@@ -55,18 +56,56 @@ public class VideoDownloader {
     private void startCacheCleaner() {
         ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
         executorService.scheduleAtFixedRate(() -> {
-            try (Jedis jedis = jedisPool.getResource()) {
-                LOGGER.info("Starting cache cleaner...");
-                int fileCount = 0;
-                int fileDeleteCount = 0;
-                int fileDeleteErrorCount = 0;
-                File rootDirFile = new File(VIDEO_ROOT_DIR);
-                for (File dir : rootDirFile.listFiles()) {
-                    for (File videoFile : dir.listFiles()) {
+            LOGGER.info("Starting cache cleaner...");
+            cleanCacheRule34();
+            cleanCacheDanbooru();
+        }, 0, 1, TimeUnit.DAYS);
+    }
+
+    private void cleanCacheRule34() {
+        int fileCount = 0;
+        int fileDeleteCount = 0;
+        int fileDeleteErrorCount = 0;
+
+        try (Jedis jedis = jedisPool.getResource()) {
+            File rootDirFile = new File(VIDEO_ROOT_DIR + "/rule34");
+            for (File dir : rootDirFile.listFiles()) {
+                for (File videoFile : dir.listFiles()) {
+                    String[] parts = videoFile.getAbsolutePath().split("/");
+                    String redisKey = parts[parts.length - 3] + "/" + parts[parts.length - 2] + "/" + parts[parts.length - 1];
+                    String redisValue = jedis.get(redisKey);
+                    Instant videoInstant = redisValue != null ? Instant.parse(redisValue).plus(VIDEO_CACHE_MAX_AGE) : Instant.MIN;
+                    if (Instant.now().isAfter(videoInstant)) {
+                        if (videoFile.delete()) {
+                            fileDeleteCount++;
+                        } else {
+                            fileDeleteErrorCount++;
+                        }
+                    }
+                    fileCount++;
+                }
+            }
+
+            LOGGER.info("Cache cleaner completed! (rule34; {} / {} deleted; {} errors)", fileDeleteCount, fileCount, fileDeleteErrorCount);
+        } catch (Throwable e) {
+            LOGGER.error("Error in cache cleaner", e);
+        }
+    }
+
+    private void cleanCacheDanbooru() {
+        int fileCount = 0;
+        int fileDeleteCount = 0;
+        int fileDeleteErrorCount = 0;
+
+        try (Jedis jedis = jedisPool.getResource()) {
+            File rootDirFile = new File(VIDEO_ROOT_DIR + "/danbooru");
+            for (File dir1 : rootDirFile.listFiles()) {
+                for (File dir2 : dir1.listFiles()) {
+                    for (File videoFile : dir2.listFiles()) {
                         String[] parts = videoFile.getAbsolutePath().split("/");
-                        String redisKey = parts[parts.length - 3] + "/" + parts[parts.length - 2] + "/" + parts[parts.length - 1];
+                        String redisKey = parts[parts.length - 4] + "/" + parts[parts.length - 3] + "/" + parts[parts.length - 2] + "/" + parts[parts.length - 1];
                         String redisValue = jedis.get(redisKey);
-                        Instant videoInstant = redisValue != null ? Instant.parse(redisValue).plus(Duration.ofDays(30)) : Instant.MIN;
+                        Instant videoInstant = redisValue != null ? Instant.parse(redisValue).plus(VIDEO_CACHE_MAX_AGE) : Instant.MIN;
                         if (Instant.now().isAfter(videoInstant)) {
                             if (videoFile.delete()) {
                                 fileDeleteCount++;
@@ -77,11 +116,12 @@ public class VideoDownloader {
                         fileCount++;
                     }
                 }
-                LOGGER.info("Cache cleaner completed! ({} / {} deleted; {} errors)", fileDeleteCount, fileCount, fileDeleteErrorCount);
-            } catch (Throwable e) {
-                LOGGER.error("Error in cache cleaner", e);
             }
-        }, 0, 1, TimeUnit.DAYS);
+
+            LOGGER.info("Cache cleaner completed! (danbooru; {} / {} deleted; {} errors)", fileDeleteCount, fileCount, fileDeleteErrorCount);
+        } catch (Throwable e) {
+            LOGGER.error("Error in cache cleaner", e);
+        }
     }
 
 }

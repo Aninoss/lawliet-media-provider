@@ -29,10 +29,12 @@ public class RestService {
     );
 
     private final Pattern SUBDOMAIN_PATTERN = Pattern.compile("^[a-zA-Z0-9-]*$");
-    private final Pattern VIDEO_DIR_PATTERN = Pattern.compile("^[0-9]*$");
+    private final Pattern RULE34_VIDEO_DIR_PATTERN = Pattern.compile("^[0-9]*$");
+    private final Pattern DANBOORU_VIDEO_DIR_PATTERN = Pattern.compile("^[0-9a-f]*/[0-9a-f]*$");
     private final Pattern RULE34_VIDEO_FILE_PATTERN = Pattern.compile("^[a-z0-9.]*$");
 
     private final String DEFAULT_SUBDOMAIN_RULE34 = "api-cdn-mp4";
+    private final String DEFAULT_SUBDOMAIN_DANBOORU = "cdn";
 
     private final LockManager lockManager = new LockManager();
     private final VideoDownloader videoDownloader = new VideoDownloader(lockManager, jedisPool);
@@ -54,13 +56,21 @@ public class RestService {
             }
 
             String[] parts = uri.substring(1).split("/");
-            if (parts.length != 4) {
+            if (parts.length < 4) {
                 return Response.status(403).build();
             }
 
             if (parts[1].equals("rule34")) {
+                if (parts.length != 4) {
+                    return Response.status(403).build();
+                }
                 return requestRule34(parts);
-            } else {
+            } else if (parts[1].equals("danbooru")) {
+                if (parts.length != 5) {
+                    return Response.status(403).build();
+                }
+                return requestDanbooru(parts);
+            } {
                 return Response.status(403).build();
             }
         } catch (Throwable e) {
@@ -80,8 +90,24 @@ public class RestService {
         }
 
         String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
-        videoDownloader.downloadVideo(videoUrl, videoDir, videoFile);
+        videoDownloader.downloadVideo("rule34", videoUrl, videoDir, videoFile);
         saveVideoRequested("rule34/" + videoDir + "/" + videoFile);
+        return Response.status(200).build();
+    }
+
+    private Response requestDanbooru(String[] parts) {
+        VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(parts[4], DEFAULT_SUBDOMAIN_DANBOORU);
+        String subdomain = videoFileAndSubdomain.subdomain;
+        String videoDir = parts[2] + "/" + parts[3];
+        String videoFile = videoFileAndSubdomain.videoFile;
+
+        if (!checkRequestUriDanbooru(subdomain, videoDir, videoFile)) {
+            return Response.status(403).build();
+        }
+
+        String videoUrl = "https://" + subdomain + ".donmai.us/original/" + videoDir + "/" + videoFile;
+        videoDownloader.downloadVideo("danbooru", videoUrl, videoDir, videoFile);
+        saveVideoRequested("danbooru/" + videoDir + "/" + videoFile);
         return Response.status(200).build();
     }
 
@@ -102,6 +128,29 @@ public class RestService {
             }
         } catch (Throwable e) {
             LOGGER.error("Rule34 redirect error", e);
+            return Response.status(500).build();
+        }
+    }
+
+    @GET
+    @Path("/media/danbooru/{videoDir1}/{videoDir2}/{videoFileAndSubdomainRaw}")
+    public Response redirectDanbooru(@PathParam("videoDir1") String videoDir1,
+                                     @PathParam("videoDir2") String videoDir2,
+                                   @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw) {
+        try {
+            VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw, DEFAULT_SUBDOMAIN_DANBOORU);
+            String subdomain = videoFileAndSubdomain.subdomain;
+            String videoFile = videoFileAndSubdomain.videoFile;
+            String videoDir = videoDir1 + "/" + videoDir2;
+
+            if (checkRequestUriDanbooru(subdomain, videoDir, videoFile)) {
+                String videoUrl = "https://" + subdomain + ".donmai.us/original/" + videoDir + "/" + videoFile;
+                return Response.temporaryRedirect(new URI(videoUrl)).build();
+            } else {
+                return Response.status(403).build();
+            }
+        } catch (Throwable e) {
+            LOGGER.error("Danbooru redirect error", e);
             return Response.status(500).build();
         }
     }
@@ -139,8 +188,15 @@ public class RestService {
 
     private boolean checkRequestUriRule34(String subdomain, String videoDir, String videoFile) {
         return SUBDOMAIN_PATTERN.matcher(subdomain).matches() &&
-                VIDEO_DIR_PATTERN.matcher(videoDir).matches() &&
+                RULE34_VIDEO_DIR_PATTERN.matcher(videoDir).matches() &&
                 RULE34_VIDEO_FILE_PATTERN.matcher(videoFile).matches() &&
+                fileIsVideo(videoFile) &&
+                isResponsible(videoDir, videoFile);
+    }
+
+    private boolean checkRequestUriDanbooru(String subdomain, String videoDir, String videoFile) {
+        return SUBDOMAIN_PATTERN.matcher(subdomain).matches() &&
+                DANBOORU_VIDEO_DIR_PATTERN.matcher(videoDir).matches() &&
                 fileIsVideo(videoFile) &&
                 isResponsible(videoDir, videoFile);
     }
@@ -166,7 +222,6 @@ public class RestService {
     private boolean fileIsVideo(String file) {
         String[] parts = file.split("\\.");
         return parts.length == 2 &&
-                StringUtil.stringIsAlphanumeric(parts[0]) &&
                 (parts[1].equals("mp4") || parts[1].equals("avi") || parts[1].equals("webm"));
     }
 
