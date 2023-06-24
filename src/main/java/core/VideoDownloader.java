@@ -57,18 +57,19 @@ public class VideoDownloader {
         ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
         executorService.scheduleAtFixedRate(() -> {
             LOGGER.info("Starting cache cleaner...");
-            cleanCacheRule34();
-            cleanCacheDanbooru();
+            cleanCacheOneLevel("rule34");
+            cleanCacheTwoLevels("danbooru");
+            cleanCacheTwoLevels("realbooru");
         }, 0, 1, TimeUnit.DAYS);
     }
 
-    private void cleanCacheRule34() {
+    private void cleanCacheOneLevel(String domain) {
         int fileCount = 0;
         int fileDeleteCount = 0;
         int fileDeleteErrorCount = 0;
 
         try (Jedis jedis = jedisPool.getResource()) {
-            File rootDirFile = new File(VIDEO_ROOT_DIR + "/rule34");
+            File rootDirFile = new File(VIDEO_ROOT_DIR + "/" + domain);
             for (File dir : rootDirFile.listFiles()) {
                 for (File videoFile : dir.listFiles()) {
                     String[] parts = videoFile.getAbsolutePath().split("/");
@@ -86,19 +87,19 @@ public class VideoDownloader {
                 }
             }
 
-            LOGGER.info("Cache cleaner completed! (rule34; {} / {} deleted; {} errors)", fileDeleteCount, fileCount, fileDeleteErrorCount);
+            LOGGER.info("Cache cleaner completed! ({}; {} / {} deleted; {} errors)", domain, fileDeleteCount, fileCount, fileDeleteErrorCount);
         } catch (Throwable e) {
             LOGGER.error("Error in cache cleaner", e);
         }
     }
 
-    private void cleanCacheDanbooru() {
+    private void cleanCacheTwoLevels(String domain) {
         int fileCount = 0;
         int fileDeleteCount = 0;
         int fileDeleteErrorCount = 0;
 
         try (Jedis jedis = jedisPool.getResource()) {
-            File rootDirFile = new File(VIDEO_ROOT_DIR + "/danbooru");
+            File rootDirFile = new File(VIDEO_ROOT_DIR + "/" + domain);
             for (File dir1 : rootDirFile.listFiles()) {
                 for (File dir2 : dir1.listFiles()) {
                     for (File videoFile : dir2.listFiles()) {
@@ -118,7 +119,7 @@ public class VideoDownloader {
                 }
             }
 
-            LOGGER.info("Cache cleaner completed! (danbooru; {} / {} deleted; {} errors)", fileDeleteCount, fileCount, fileDeleteErrorCount);
+            LOGGER.info("Cache cleaner completed! ({}; {} / {} deleted; {} errors)", domain, fileDeleteCount, fileCount, fileDeleteErrorCount);
         } catch (Throwable e) {
             LOGGER.error("Error in cache cleaner", e);
         }

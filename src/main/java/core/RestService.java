@@ -31,6 +31,7 @@ public class RestService {
     private final Pattern SUBDOMAIN_PATTERN = Pattern.compile("^[a-zA-Z0-9-]*$");
     private final Pattern RULE34_VIDEO_DIR_PATTERN = Pattern.compile("^[0-9]*$");
     private final Pattern DANBOORU_VIDEO_DIR_PATTERN = Pattern.compile("^[0-9a-f]*/[0-9a-f]*$");
+    private final Pattern REALBOORU_VIDEO_DIR_PATTERN = DANBOORU_VIDEO_DIR_PATTERN;
     private final Pattern RULE34_VIDEO_FILE_PATTERN = Pattern.compile("^[a-z0-9.]*$");
 
     private final String DEFAULT_SUBDOMAIN_RULE34 = "api-cdn-mp4";
@@ -70,7 +71,12 @@ public class RestService {
                     return Response.status(403).build();
                 }
                 return requestDanbooru(parts);
-            } {
+            } else if (parts[1].equals("realbooru")) {
+                if (parts.length != 5) {
+                    return Response.status(403).build();
+                }
+                return requestRealbooru(parts);
+            } else {
                 return Response.status(403).build();
             }
         } catch (Throwable e) {
@@ -108,6 +114,20 @@ public class RestService {
         String videoUrl = "https://" + subdomain + ".donmai.us/original/" + videoDir + "/" + videoFile;
         videoDownloader.downloadVideo("danbooru", videoUrl, videoDir, videoFile);
         saveVideoRequested("danbooru/" + videoDir + "/" + videoFile);
+        return Response.status(200).build();
+    }
+
+    private Response requestRealbooru(String[] parts) {
+        String videoDir = parts[2] + "/" + parts[3];
+        String videoFile = parts[4];
+
+        if (!checkRequestUriRealbooru(videoDir, videoFile)) {
+            return Response.status(403).build();
+        }
+
+        String videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFile;
+        videoDownloader.downloadVideo("realbooru", videoUrl, videoDir, videoFile);
+        saveVideoRequested("realbooru/" + videoDir + "/" + videoFile);
         return Response.status(200).build();
     }
 
@@ -156,6 +176,26 @@ public class RestService {
     }
 
     @GET
+    @Path("/media/realbooru/{videoDir1}/{videoDir2}/{videoFile}")
+    public Response redirectRealbooru(@PathParam("videoDir1") String videoDir1,
+                                     @PathParam("videoDir2") String videoDir2,
+                                     @PathParam("videoFile") String videoFile) {
+        try {
+            String videoDir = videoDir1 + "/" + videoDir2;
+
+            if (checkRequestUriRealbooru(videoDir, videoFile)) {
+                String videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFile;
+                return Response.temporaryRedirect(new URI(videoUrl)).build();
+            } else {
+                return Response.status(403).build();
+            }
+        } catch (Throwable e) {
+            LOGGER.error("Realbooru redirect error", e);
+            return Response.status(500).build();
+        }
+    }
+
+    @GET
     @Path("/proxy/{url}/{auth}")
     @Consumes(MediaType.TEXT_PLAIN)
     public Response proxy(@PathParam("url") String url, @PathParam("auth") String auth) {
@@ -197,6 +237,12 @@ public class RestService {
     private boolean checkRequestUriDanbooru(String subdomain, String videoDir, String videoFile) {
         return SUBDOMAIN_PATTERN.matcher(subdomain).matches() &&
                 DANBOORU_VIDEO_DIR_PATTERN.matcher(videoDir).matches() &&
+                fileIsVideo(videoFile) &&
+                isResponsible(videoDir, videoFile);
+    }
+
+    private boolean checkRequestUriRealbooru(String videoDir, String videoFile) {
+        return REALBOORU_VIDEO_DIR_PATTERN.matcher(videoDir).matches() &&
                 fileIsVideo(videoFile) &&
                 isResponsible(videoDir, videoFile);
     }
