@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 public class HttpClient {
 
     private final static Logger LOGGER = LoggerFactory.getLogger(HttpClient.class);
-    public static final String USER_AGENT = "Lawliet Discord Bot by Aninoss#7220";
+    public static final String USER_AGENT = "Lawliet Discord Bot by aninoss";
 
     private final OkHttpClient client = new OkHttpClient.Builder()
             .callTimeout(10, TimeUnit.SECONDS)
@@ -20,7 +20,7 @@ public class HttpClient {
         String domain = url.split("/")[2];
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("User-Agent", USER_AGENT)
+                .header("User-Agent", USER_AGENT)
                 .build();
 
         try (Response response = client.newCall(request).execute()) {
