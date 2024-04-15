@@ -11,4 +11,8 @@ public class StringUtil {
         return true;
     }
 
+    public static String getUriExt(String uri) {
+        return uri.substring(uri.lastIndexOf("."));
+    }
+
 }
