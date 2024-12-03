@@ -43,6 +43,7 @@ public class RestService {
     private final Pattern DANBOORU_VIDEO_DIR_PATTERN = Pattern.compile("^[0-9a-f]*/[0-9a-f]*$");
     private final Pattern REALBOORU_VIDEO_DIR_PATTERN = DANBOORU_VIDEO_DIR_PATTERN;
     private final Pattern RULE34_VIDEO_FILE_PATTERN = Pattern.compile("^[a-z0-9.]*$");
+    private final Pattern PLAYER_PATH_PATTERN = Pattern.compile("^/[a-zA-Z0-9/]*\\.[a-zA-Z0-9]*(\\?[a-zA-Z0-9-=]*)?$");
 
     private final String DEFAULT_SUBDOMAIN_RULE34 = "api-cdn-mp4";
     private final String DEFAULT_SUBDOMAIN_DANBOORU = "cdn";
@@ -96,6 +97,49 @@ public class RestService {
             LOGGER.error("Video request error", e);
             return Response.status(500).build();
         }
+    }
+
+    @GET
+    @Path("/player{path:.*}")
+    @Produces(MediaType.TEXT_HTML)
+    public Response player(@HeaderParam("X-Original-URI") String uri) {
+        if (!PLAYER_PATH_PATTERN.matcher(uri).matches()) {
+            return Response.status(404).build();
+        }
+
+        String html = """
+                <!doctype html>
+                <html lang="en">
+                <head>
+                    <meta charset="utf-8">
+                    <title>Lawliet Bot</title>
+                    <base href="/">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <meta property="og:type" content="video.other">
+                    <meta property="og:video:url" content="{url}">
+                    <meta property="og:video:width" content="1280">
+                    <meta property="og:video:height" content="720">
+                    <style>
+                    :root {
+                        background-color: black;
+                        height: 100%;
+                        -moz-user-focus: ignore;
+                    }
+                    video {
+                        position: absolute;
+                        inset: 0;
+                        margin: auto;
+                        width: 100%;
+                        height: 100%;
+                    }
+                    </style>
+                </head>
+                <body>
+                    <video src="{url}" type="video/mp4" autoplay="" controls=""></video>
+                </body>
+                </html>
+                """;
+        return Response.ok(html.replace("{url}", uri.replace("/player/", "/media/"))).build();
     }
 
     private Response requestRule34(String[] parts) {
