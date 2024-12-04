@@ -102,11 +102,14 @@ public class RestService {
     @Path("/player{path:.*}")
     @Produces(MediaType.TEXT_HTML)
     public Response player(@PathParam("path") String path, @Context UriInfo uriInfo) {
-        if (!PLAYER_PATH_PATTERN.matcher(path).matches()) {
+        MultivaluedMap<String, String> parameters = uriInfo.getQueryParameters();
+        String subdomain = parameters.get("s").get(0);
+        int width = Integer.parseInt(parameters.get("w").get(0));
+        int height = Integer.parseInt(parameters.get("h").get(0));
+
+        if (!PLAYER_PATH_PATTERN.matcher(path).matches() || !SUBDOMAIN_PATTERN.matcher(subdomain).matches()) {
             return Response.status(404).build();
         }
-
-        MultivaluedMap<String, String> parameters = uriInfo.getQueryParameters();
         String html = """
                 <!doctype html>
                 <html lang="en">
@@ -139,9 +142,9 @@ public class RestService {
                 </body>
                 </html>
                 """
-                .replace("{url}","/media" + path + "?s=" + parameters.get("s").get(0))
-                .replace("{width}", parameters.get("w").get(0))
-                .replace("{height}", parameters.get("h").get(0));
+                .replace("{url}","/media" + path + "?s=" + subdomain)
+                .replace("{width}", String.valueOf(width))
+                .replace("{height}", String.valueOf(height));
         return Response.ok(html).build();
     }
 
