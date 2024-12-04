@@ -135,7 +135,7 @@ public class RestService {
                     </style>
                 </head>
                 <body>
-                    <video src="{url}" type="video/mp4" autoplay="" controls=""></video>
+                    <video src="{url}" type="video/mp4" autoplay loop controls></video>
                 </body>
                 </html>
                 """
