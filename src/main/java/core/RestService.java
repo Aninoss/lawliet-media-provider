@@ -114,8 +114,8 @@ public class RestService {
         String url;
         if (path.startsWith("/e621")) {
             url = "https://" + subdomain + ".e621.net/data" + path.substring("/e621".length());
-        } else if (path.startsWith("/realb")) {
-            url = "https://realbooru.com//images" + path.substring("/realb".length());
+        } else if (path.startsWith("/realbooru")) {
+            url = "https://realbooru.com//images" + path.substring("/realbooru".length());
         } else {
             url = "/media" + path + "?s=" + subdomain;
         }
