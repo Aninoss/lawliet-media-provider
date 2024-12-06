@@ -103,12 +103,21 @@ public class RestService {
     @Produces(MediaType.TEXT_HTML)
     public Response player(@PathParam("path") String path, @Context UriInfo uriInfo) {
         MultivaluedMap<String, String> parameters = uriInfo.getQueryParameters();
-        String subdomain = parameters.get("s").get(0);
+        String subdomain = parameters.get("s") != null ? parameters.get("s").get(0) : "";
         int width = Integer.parseInt(parameters.get("w").get(0));
         int height = Integer.parseInt(parameters.get("h").get(0));
 
         if (!PLAYER_PATH_PATTERN.matcher(path).matches() || !SUBDOMAIN_PATTERN.matcher(subdomain).matches()) {
             return Response.status(404).build();
+        }
+
+        String url;
+        if (path.startsWith("/e621")) {
+            url = "https://" + subdomain + ".e621.net/data" + path.substring("/e621".length());
+        } else if (path.startsWith("/realb")) {
+            url = "https://realbooru.com//images" + path.substring("/realb".length());
+        } else {
+            url = "/media" + path + "?s=" + subdomain;
         }
         String html = """
                 <!doctype html>
@@ -138,11 +147,11 @@ public class RestService {
                     </style>
                 </head>
                 <body>
-                    <video src="{url}" type="video/mp4" autoplay loop controls></video>
+                    <video src="{url}" autoplay loop controls></video>
                 </body>
                 </html>
                 """
-                .replace("{url}","/media" + path + "?s=" + subdomain)
+                .replace("{url}", url)
                 .replace("{width}", String.valueOf(width))
                 .replace("{height}", String.valueOf(height));
         return Response.ok(html).build();
