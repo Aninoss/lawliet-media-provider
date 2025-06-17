@@ -42,7 +42,7 @@ public class RestService {
     private final Pattern DANBOORU_VIDEO_DIR_PATTERN = Pattern.compile("^[0-9a-f]*/[0-9a-f]*$");
     private final Pattern REALBOORU_VIDEO_DIR_PATTERN = DANBOORU_VIDEO_DIR_PATTERN;
     private final Pattern RULE34_VIDEO_FILE_PATTERN = Pattern.compile("^[a-z0-9.]*$");
-    private final Pattern PLAYER_PATH_PATTERN = Pattern.compile("^/[a-zA-Z0-9/]*\\.[a-zA-Z0-9]*$");
+    private final Pattern PLAYER_PATH_PATTERN = Pattern.compile("^/[a-zA-Z0-9/_]*\\.[a-zA-Z0-9]*$");
 
     private final String DEFAULT_SUBDOMAIN_RULE34 = "api-cdn-mp4";
     private final String DEFAULT_SUBDOMAIN_DANBOORU = "cdn";
@@ -113,7 +113,7 @@ public class RestService {
 
         String url;
         if (path.startsWith("/e621")) {
-            url = "https://" + subdomain + ".e621.net/data" + path.substring("/e621".length());
+            url = "https://" + subdomain + ".e621.net/data/sample" + path.substring("/e621".length());
         } else if (path.startsWith("/realbooru")) {
             url = "https://realbooru.com//images" + path.substring("/realbooru".length());
         } else {
