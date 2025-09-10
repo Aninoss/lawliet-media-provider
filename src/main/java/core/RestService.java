@@ -3,9 +3,10 @@ package core;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
-import okhttp3.OkHttpClient;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import okhttp3.*;
 import okhttp3.Request;
-import okhttp3.ResponseBody;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,10 +18,13 @@ import util.StringUtil;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.URI;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 @Path("")
@@ -47,12 +51,29 @@ public class RestService {
     private final String DEFAULT_SUBDOMAIN_RULE34 = "api-cdn-mp4";
     private final String DEFAULT_SUBDOMAIN_DANBOORU = "cdn";
 
-    private final LockManager lockManager = new LockManager();
-    private final VideoDownloader videoDownloader = new VideoDownloader(lockManager, jedisPool);
-    private final OkHttpClient httpClient = new OkHttpClient.Builder()
-            .followRedirects(false)
-            .followSslRedirects(false)
-            .build();
+    private final OkHttpClient httpClient;
+    private final VideoDownloader videoDownloader;
+
+    public RestService() {
+        Dispatcher dispatcher = new Dispatcher();
+        dispatcher.setMaxRequests(999);
+        dispatcher.setMaxRequestsPerHost(999);
+        ConnectionPool connectionPool = new ConnectionPool(100, 5, TimeUnit.MINUTES);
+        Dns dns = hostname -> Arrays.asList(InetAddress.getAllByName(hostname));
+
+        this.httpClient = new OkHttpClient.Builder()
+                .dns(dns)
+                .connectionPool(connectionPool)
+                .dispatcher(dispatcher)
+                .callTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .cache(null)
+                .protocols(List.of(Protocol.HTTP_1_1))
+                .build();
+        this.videoDownloader = new VideoDownloader(new LockManager(), jedisPool, httpClient);
+    }
 
     @GET
     @Path("/ping")
@@ -327,7 +348,6 @@ public class RestService {
     private boolean checkRequestUriDanbooru(String subdomain, String videoDir, String videoFile) {
         return SUBDOMAIN_PATTERN.matcher(subdomain).matches() &&
                 DANBOORU_VIDEO_DIR_PATTERN.matcher(videoDir).matches() &&
-                fileIsVideo(videoFile) &&
                 isResponsible(videoDir, videoFile);
     }
 

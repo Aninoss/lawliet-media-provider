@@ -1,18 +1,22 @@
 package core;
 
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.ResponseBody;
+import okio.BufferedSink;
+import okio.Okio;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+
 import java.io.File;
 import java.io.IOException;
-import java.net.URL;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
 
 public class VideoDownloader {
 
@@ -22,10 +26,12 @@ public class VideoDownloader {
 
     private final LockManager lockManager;
     private final JedisPool jedisPool;
+    private final OkHttpClient httpClient;
 
-    public VideoDownloader(LockManager lockManager, JedisPool jedisPool) {
+    public VideoDownloader(LockManager lockManager, JedisPool jedisPool, OkHttpClient httpClient) {
         this.lockManager = lockManager;
         this.jedisPool = jedisPool;
+        this.httpClient = httpClient;
         if (Boolean.parseBoolean(System.getenv("CACHE_CLEANER"))) {
             startCacheCleaner();
         }
@@ -38,13 +44,18 @@ public class VideoDownloader {
             if (!videoFile.exists()) {
                 new File(videoFullDir).mkdir();
                 LOGGER.info("Downloading video: {}", videoUrl);
-                try {
-                    FileUtils.copyURLToFile(
-                            new URL(videoUrl),
-                            videoFile,
-                            3_000,
-                            30_000
-                    );
+
+                Request request = new Request.Builder()
+                        .header("User-Agent", RestService.USER_AGENT)
+                        .header("Accept-Encoding", "gzip")
+                        .url(videoUrl)
+                        .get()
+                        .build();
+                try (okhttp3.Response response = httpClient.newCall(request).execute();
+                     ResponseBody body = response.body();
+                     BufferedSink sink = Okio.buffer(Okio.sink(videoFile));
+                ) {
+                    sink.writeAll(body.source());
                 } catch (IOException e) {
                     LOGGER.error("Exception on video download", e);
                 }
