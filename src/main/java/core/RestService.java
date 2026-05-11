@@ -123,6 +123,9 @@ public class RestService {
     @Path("/player{path:.*}")
     @Produces(MediaType.TEXT_HTML)
     public Response player(@PathParam("path") String path, @Context UriInfo uriInfo) {
+        if (!path.contains(".mp4")) {
+            path += ".mp4";
+        }
         MultivaluedMap<String, String> parameters = uriInfo.getQueryParameters();
         String subdomain = parameters.get("s") != null ? parameters.get("s").get(0) : "";
         int width = Integer.parseInt(parameters.get("w").get(0));
@@ -138,7 +141,7 @@ public class RestService {
         } else if (path.startsWith("/realbooru")) {
             url = "https://realbooru.com//images" + path.substring("/realbooru".length());
         } else {
-            url = "/media" + path + "?s=" + subdomain;
+            url = System.getenv("URL_ROOT") + "/media" + path + "?s=" + subdomain;
         }
         String html = """
                 <!doctype html>
@@ -152,6 +155,7 @@ public class RestService {
                     <meta property="og:video:url" content="{url}">
                     <meta property="og:video:width" content="{width}">
                     <meta property="og:video:height" content="{height}">
+                    <meta property="og:video:type" content="video/mp4">
                     <style>
                     :root {
                         background-color: black;
