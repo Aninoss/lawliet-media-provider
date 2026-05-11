@@ -136,12 +136,20 @@ public class RestService {
         }
 
         String url;
+        String thumbnailUrl = "";
         if (path.startsWith("/e621")) {
             url = "https://" + subdomain + ".e621.net/data/sample" + path.substring("/e621".length());
+            thumbnailUrl = url.replace("_alt.mp4", ".jpg");
         } else if (path.startsWith("/realbooru")) {
             url = "https://realbooru.com//images" + path.substring("/realbooru".length());
+            thumbnailUrl = url.replace(".mp4", ".jpg");
         } else {
             url = System.getenv("URL_ROOT") + "/media" + path + "?s=" + subdomain;
+            if (path.startsWith("/danbooru")) {
+                thumbnailUrl = "https://" + subdomain + ".donmai.us/360x360" + path.substring("/danbooru".length()).replace(".mp4", ".jpg");
+            } else if (path.startsWith("/rule34")) {
+                thumbnailUrl = "https://" + subdomain + ".rule34.xxx/images" + path.substring("/rule34".length()).replace(".mp4", ".jpg");
+            }
         }
         String html = """
                 <!doctype html>
@@ -156,6 +164,7 @@ public class RestService {
                     <meta property="og:video:width" content="{width}">
                     <meta property="og:video:height" content="{height}">
                     <meta property="og:video:type" content="video/mp4">
+                    <meta property="og:image" content="{thumbnail_url}">
                     <style>
                     :root {
                         background-color: black;
@@ -177,6 +186,7 @@ public class RestService {
                 </html>
                 """
                 .replace("{url}", url)
+                .replace("{thumbnail_url}", thumbnailUrl)
                 .replace("{width}", String.valueOf(width))
                 .replace("{height}", String.valueOf(height));
         return Response.ok(html).build();
