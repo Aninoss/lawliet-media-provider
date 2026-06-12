@@ -45,6 +45,7 @@ public class RestService {
     private final Pattern RULE34_VIDEO_DIR_PATTERN = Pattern.compile("^[0-9]*$");
     private final Pattern DANBOORU_VIDEO_DIR_PATTERN = Pattern.compile("^[0-9a-f]*/[0-9a-f]*$");
     private final Pattern REALBOORU_VIDEO_DIR_PATTERN = DANBOORU_VIDEO_DIR_PATTERN;
+    private final Pattern REALBOORU_POST_ID_PATTERN = Pattern.compile("^[0-9]*$");
     private final Pattern RULE34_VIDEO_FILE_PATTERN = Pattern.compile("^[a-z0-9.]*$");
     private final Pattern PLAYER_PATH_PATTERN = Pattern.compile("^/[a-zA-Z0-9/_]*\\.[a-zA-Z0-9]*$");
 
@@ -193,8 +194,8 @@ public class RestService {
     }
 
     private Response requestRule34(String[] parts) {
-        VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(parts[3], DEFAULT_SUBDOMAIN_RULE34);
-        String subdomain = videoFileAndSubdomain.subdomain;
+        VideoFileAndParameter videoFileAndSubdomain = extractVideoFileSubdomain(parts[3], DEFAULT_SUBDOMAIN_RULE34);
+        String subdomain = videoFileAndSubdomain.parameter;
         String videoDir = parts[2];
         String videoFile = videoFileAndSubdomain.videoFile;
 
@@ -209,8 +210,8 @@ public class RestService {
     }
 
     private Response requestDanbooru(String[] parts) {
-        VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(parts[4], DEFAULT_SUBDOMAIN_DANBOORU);
-        String subdomain = videoFileAndSubdomain.subdomain;
+        VideoFileAndParameter videoFileAndSubdomain = extractVideoFileSubdomain(parts[4], DEFAULT_SUBDOMAIN_DANBOORU);
+        String subdomain = videoFileAndSubdomain.parameter;
         String videoDir = parts[2] + "/" + parts[3];
         String videoFile = videoFileAndSubdomain.videoFile;
 
@@ -225,15 +226,18 @@ public class RestService {
     }
 
     private Response requestRealbooru(String[] parts) {
-        String videoDir = parts[2] + "/" + parts[3];
-        String videoFile = parts[4];
+        VideoFileAndParameter videoFileAndPostId = extractVideoFilePostId(parts[4]);
+        var videoDir = parts[2] + "/" + parts[3];
+        String videoFile = videoFileAndPostId.videoFile;
+        String postId = videoFileAndPostId.parameter;
+        String referer = "https://realbooru.com/index.php?page=post&s=view&id=" + postId;
 
-        if (!checkRequestUriRealbooru(videoDir, videoFile)) {
+        if (!checkRequestUriRealbooru(videoDir, videoFile, postId)) {
             return Response.status(403).build();
         }
 
         String videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFile;
-        videoDownloader.downloadVideo("realbooru", videoUrl, videoDir, videoFile);
+        videoDownloader.downloadVideo("realbooru", videoUrl, videoDir, videoFile, referer);
         saveVideoRequested("realbooru/" + videoDir + "/" + videoFile);
         return Response.status(200).build();
     }
@@ -241,10 +245,11 @@ public class RestService {
     @GET
     @Path("/media/rule34/{videoDir}/{videoFileAndSubdomainRaw}")
     public Response redirectRule34(@PathParam("videoDir") String videoDir,
-                                   @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw) {
+                                   @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw
+    ) {
         try {
-            VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw, DEFAULT_SUBDOMAIN_RULE34);
-            String subdomain = videoFileAndSubdomain.subdomain;
+            VideoFileAndParameter videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw, DEFAULT_SUBDOMAIN_RULE34);
+            String subdomain = videoFileAndSubdomain.parameter;
             String videoFile = videoFileAndSubdomain.videoFile;
 
             if (checkRequestUriRule34(subdomain, videoDir, videoFile)) {
@@ -263,10 +268,11 @@ public class RestService {
     @Path("/media/danbooru/{videoDir1}/{videoDir2}/{videoFileAndSubdomainRaw}")
     public Response redirectDanbooru(@PathParam("videoDir1") String videoDir1,
                                      @PathParam("videoDir2") String videoDir2,
-                                   @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw) {
+                                     @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw
+    ) {
         try {
-            VideoFileAndSubdomain videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw, DEFAULT_SUBDOMAIN_DANBOORU);
-            String subdomain = videoFileAndSubdomain.subdomain;
+            VideoFileAndParameter videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw, DEFAULT_SUBDOMAIN_DANBOORU);
+            String subdomain = videoFileAndSubdomain.parameter;
             String videoFile = videoFileAndSubdomain.videoFile;
             String videoDir = videoDir1 + "/" + videoDir2;
 
@@ -283,15 +289,19 @@ public class RestService {
     }
 
     @GET
-    @Path("/media/realbooru/{videoDir1}/{videoDir2}/{videoFile}")
+    @Path("/media/realbooru/{videoDir1}/{videoDir2}/{videoFileAndPostIdRaw}")
     public Response redirectRealbooru(@PathParam("videoDir1") String videoDir1,
-                                     @PathParam("videoDir2") String videoDir2,
-                                     @PathParam("videoFile") String videoFile) {
+                                      @PathParam("videoDir2") String videoDir2,
+                                      @PathParam("videoFileAndPostIdRaw") String videoFileAndPostIdRaw
+    ) {
         try {
+            VideoFileAndParameter videoFileAndPostId = extractVideoFilePostId(videoFileAndPostIdRaw);
+            String postId = videoFileAndPostId.parameter;
+            String videoFile = videoFileAndPostId.videoFile;
             String videoDir = videoDir1 + "/" + videoDir2;
 
-            if (checkRequestUriRealbooru(videoDir, videoFile)) {
-                String videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFile;
+            if (checkRequestUriRealbooru(videoDir, videoFile, postId)) {
+                String videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFileAndPostId;
                 return Response.temporaryRedirect(new URI(videoUrl)).build();
             } else {
                 return Response.status(403).build();
@@ -342,12 +352,21 @@ public class RestService {
         }
     }
 
-    private VideoFileAndSubdomain extractVideoFileSubdomain(String videoFileAndSubdomain, String defaultSubdomain) {
+    private VideoFileAndParameter extractVideoFileSubdomain(String videoFileAndSubdomain, String defaultSubdomain) {
         if (videoFileAndSubdomain.contains("?s=")) {
             String[] splits = videoFileAndSubdomain.split("\\?s=");
-            return new VideoFileAndSubdomain(splits[0], splits[1]);
+            return new VideoFileAndParameter(splits[0], splits[1]);
         } else {
-            return new VideoFileAndSubdomain(videoFileAndSubdomain.split("\\?")[0], defaultSubdomain);
+            return new VideoFileAndParameter(videoFileAndSubdomain.split("\\?")[0], defaultSubdomain);
+        }
+    }
+
+    private VideoFileAndParameter extractVideoFilePostId(String videoFileAndPostId) {
+        if (videoFileAndPostId.contains("?id=")) {
+            String[] splits = videoFileAndPostId.split("\\?id=");
+            return new VideoFileAndParameter(splits[0], splits[1]);
+        } else {
+            return new VideoFileAndParameter(videoFileAndPostId.split("\\?")[0], "");
         }
     }
 
@@ -365,9 +384,9 @@ public class RestService {
                 isResponsible(videoDir, videoFile);
     }
 
-    private boolean checkRequestUriRealbooru(String videoDir, String videoFile) {
+    private boolean checkRequestUriRealbooru(String videoDir, String videoFile, String postId) {
         return REALBOORU_VIDEO_DIR_PATTERN.matcher(videoDir).matches() &&
-                fileIsVideo(videoFile) &&
+                REALBOORU_POST_ID_PATTERN.matcher(postId).matches() &&
                 isResponsible(videoDir, videoFile);
     }
 
@@ -404,14 +423,14 @@ public class RestService {
     }
 
 
-    private static class VideoFileAndSubdomain {
+    private static class VideoFileAndParameter {
 
         private final String videoFile;
-        private final String subdomain;
+        private final String parameter;
 
-        public VideoFileAndSubdomain(String videoFile, String subdomain) {
+        public VideoFileAndParameter(String videoFile, String parameter) {
             this.videoFile = videoFile;
-            this.subdomain = subdomain;
+            this.parameter = parameter;
         }
 
     }

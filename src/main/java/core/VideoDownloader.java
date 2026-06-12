@@ -38,20 +38,28 @@ public class VideoDownloader {
     }
 
     public void downloadVideo(String domain, String videoUrl, String videoDir, String videoFilename) {
+        downloadVideo(domain, videoUrl, videoDir, videoFilename, null);
+    }
+
+    public void downloadVideo(String domain, String videoUrl, String videoDir, String videoFilename, String referer) {
         String videoFullDir = VIDEO_ROOT_DIR + "/" + domain + "/" + videoDir;
         File videoFile = new File(videoFullDir + "/" + videoFilename);
         synchronized (lockManager.get(videoUrl)) {
             if (!videoFile.exists()) {
-                new File(videoFullDir).mkdir();
+                new File(videoFullDir).mkdirs();
                 LOGGER.info("Downloading video: {}", videoUrl);
 
-                Request request = new Request.Builder()
+                Request.Builder request = new Request.Builder()
                         .header("User-Agent", RestService.USER_AGENT)
                         .header("Accept-Encoding", "gzip")
                         .url(videoUrl)
-                        .get()
-                        .build();
-                try (okhttp3.Response response = httpClient.newCall(request).execute();
+                        .get();
+
+                if (referer != null) {
+                    request = request.header("Referer", referer);
+                }
+
+                try (okhttp3.Response response = httpClient.newCall(request.build()).execute();
                      ResponseBody body = response.body();
                      BufferedSink sink = Okio.buffer(Okio.sink(videoFile));
                 ) {
