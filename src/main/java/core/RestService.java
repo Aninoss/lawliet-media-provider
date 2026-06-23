@@ -204,9 +204,9 @@ public class RestService {
         }
 
         String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
-        videoDownloader.downloadVideo("rule34", videoUrl, videoDir, videoFile);
+        long fileSize = videoDownloader.downloadVideo("rule34", videoUrl, videoDir, videoFile);
         saveVideoRequested("rule34/" + videoDir + "/" + videoFile);
-        return Response.status(200).build();
+        return Response.status(200).entity(fileSize).build();
     }
 
     private Response requestDanbooru(String[] parts) {
@@ -220,9 +220,9 @@ public class RestService {
         }
 
         String videoUrl = "https://" + subdomain + ".donmai.us/original/" + videoDir + "/" + videoFile;
-        videoDownloader.downloadVideo("danbooru", videoUrl, videoDir, videoFile);
+        long fileSize = videoDownloader.downloadVideo("danbooru", videoUrl, videoDir, videoFile);
         saveVideoRequested("danbooru/" + videoDir + "/" + videoFile);
-        return Response.status(200).build();
+        return Response.status(200).entity(fileSize).build();
     }
 
     private Response requestRealbooru(String[] parts) {
@@ -236,10 +236,15 @@ public class RestService {
             return Response.status(403).build();
         }
 
-        String videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFile;
-        videoDownloader.downloadVideo("realbooru", videoUrl, videoDir, videoFile, referer);
+        String videoUrl;
+        if (videoFile.startsWith("thumbnail_")) {
+            videoUrl = "https://realbooru.com/thumbnails/" + videoDir + "/" + videoFile;
+        } else {
+            videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFile;
+        }
+        long fileSize = videoDownloader.downloadVideo("realbooru", videoUrl, videoDir, videoFile, referer);
         saveVideoRequested("realbooru/" + videoDir + "/" + videoFile);
-        return Response.status(200).build();
+        return Response.status(200).entity(fileSize).build();
     }
 
     @GET
@@ -260,54 +265,6 @@ public class RestService {
             }
         } catch (Throwable e) {
             LOGGER.error("Rule34 redirect error", e);
-            return Response.status(500).build();
-        }
-    }
-
-    @GET
-    @Path("/media/danbooru/{videoDir1}/{videoDir2}/{videoFileAndSubdomainRaw}")
-    public Response redirectDanbooru(@PathParam("videoDir1") String videoDir1,
-                                     @PathParam("videoDir2") String videoDir2,
-                                     @PathParam("videoFileAndSubdomainRaw") String videoFileAndSubdomainRaw
-    ) {
-        try {
-            VideoFileAndParameter videoFileAndSubdomain = extractVideoFileSubdomain(videoFileAndSubdomainRaw, DEFAULT_SUBDOMAIN_DANBOORU);
-            String subdomain = videoFileAndSubdomain.parameter;
-            String videoFile = videoFileAndSubdomain.videoFile;
-            String videoDir = videoDir1 + "/" + videoDir2;
-
-            if (checkRequestUriDanbooru(subdomain, videoDir, videoFile)) {
-                String videoUrl = "https://" + subdomain + ".donmai.us/original/" + videoDir + "/" + videoFile;
-                return Response.temporaryRedirect(new URI(videoUrl)).build();
-            } else {
-                return Response.status(403).build();
-            }
-        } catch (Throwable e) {
-            LOGGER.error("Danbooru redirect error", e);
-            return Response.status(500).build();
-        }
-    }
-
-    @GET
-    @Path("/media/realbooru/{videoDir1}/{videoDir2}/{videoFileAndPostIdRaw}")
-    public Response redirectRealbooru(@PathParam("videoDir1") String videoDir1,
-                                      @PathParam("videoDir2") String videoDir2,
-                                      @PathParam("videoFileAndPostIdRaw") String videoFileAndPostIdRaw
-    ) {
-        try {
-            VideoFileAndParameter videoFileAndPostId = extractVideoFilePostId(videoFileAndPostIdRaw);
-            String postId = videoFileAndPostId.parameter;
-            String videoFile = videoFileAndPostId.videoFile;
-            String videoDir = videoDir1 + "/" + videoDir2;
-
-            if (checkRequestUriRealbooru(videoDir, videoFile, postId)) {
-                String videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFileAndPostId;
-                return Response.temporaryRedirect(new URI(videoUrl)).build();
-            } else {
-                return Response.status(403).build();
-            }
-        } catch (Throwable e) {
-            LOGGER.error("Realbooru redirect error", e);
             return Response.status(500).build();
         }
     }

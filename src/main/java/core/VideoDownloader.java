@@ -12,6 +12,7 @@ import redis.clients.jedis.JedisPool;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.Executors;
@@ -37,11 +38,11 @@ public class VideoDownloader {
         }
     }
 
-    public void downloadVideo(String domain, String videoUrl, String videoDir, String videoFilename) {
-        downloadVideo(domain, videoUrl, videoDir, videoFilename, null);
+    public long downloadVideo(String domain, String videoUrl, String videoDir, String videoFilename) {
+        return downloadVideo(domain, videoUrl, videoDir, videoFilename, null);
     }
 
-    public void downloadVideo(String domain, String videoUrl, String videoDir, String videoFilename, String referer) {
+    public long downloadVideo(String domain, String videoUrl, String videoDir, String videoFilename, String referer) {
         String videoFullDir = VIDEO_ROOT_DIR + "/" + domain + "/" + videoDir;
         File videoFile = new File(videoFullDir + "/" + videoFilename);
         synchronized (lockManager.get(videoUrl)) {
@@ -69,6 +70,13 @@ public class VideoDownloader {
                 }
                 LOGGER.info("Video download complete: {}", videoUrl);
             }
+        }
+
+        try {
+            return Files.size(videoFile.toPath());
+        } catch (IOException e) {
+            LOGGER.error("Exception when reading file size for {}", videoFile.getPath(), e);
+            return -1;
         }
     }
 
