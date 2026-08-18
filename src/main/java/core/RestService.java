@@ -10,9 +10,6 @@ import okhttp3.Request;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
-import redis.clients.jedis.JedisPoolConfig;
 import util.StringUtil;
 
 import java.io.File;
@@ -20,7 +17,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
-import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -32,12 +28,6 @@ import java.util.regex.Pattern;
 public class RestService {
 
     private final static Logger LOGGER = LoggerFactory.getLogger(RestService.class);
-
-    private final JedisPool jedisPool = new JedisPool(
-            buildPoolConfig(),
-            System.getenv("REDIS_HOST"),
-            Integer.parseInt(System.getenv("REDIS_PORT"))
-    );
 
     public static final String USER_AGENT = "Lawliet Discord Bot by aninoss";
 
@@ -73,7 +63,7 @@ public class RestService {
                 .cache(null)
                 .protocols(List.of(Protocol.HTTP_1_1))
                 .build();
-        this.videoDownloader = new VideoDownloader(new LockManager(), jedisPool, httpClient);
+        this.videoDownloader = new VideoDownloader(new LockManager(), httpClient);
     }
 
     @GET
@@ -205,7 +195,6 @@ public class RestService {
 
         String videoUrl = "https://" + subdomain + ".rule34.xxx/images/" + videoDir + "/" + videoFile;
         long fileSize = videoDownloader.downloadVideo("rule34", videoUrl, videoDir, videoFile);
-        saveVideoRequested("rule34/" + videoDir + "/" + videoFile);
         return Response.status(200).entity(fileSize).build();
     }
 
@@ -221,7 +210,6 @@ public class RestService {
 
         String videoUrl = "https://" + subdomain + ".donmai.us/original/" + videoDir + "/" + videoFile;
         long fileSize = videoDownloader.downloadVideo("danbooru", videoUrl, videoDir, videoFile);
-        saveVideoRequested("danbooru/" + videoDir + "/" + videoFile);
         return Response.status(200).entity(fileSize).build();
     }
 
@@ -243,7 +231,6 @@ public class RestService {
             videoUrl = "https://realbooru.com//images/" + videoDir + "/" + videoFile;
         }
         long fileSize = videoDownloader.downloadVideo("realbooru", videoUrl, videoDir, videoFile, referer);
-        saveVideoRequested("realbooru/" + videoDir + "/" + videoFile);
         return Response.status(200).entity(fileSize).build();
     }
 
@@ -359,24 +346,10 @@ public class RestService {
                 .anyMatch(shard -> shard == fileShard);
     }
 
-    private void saveVideoRequested(String id) {
-        try (Jedis jedis = jedisPool.getResource()) {
-            jedis.set(id, Instant.now().toString());
-        }
-    }
-
     private boolean fileIsVideo(String file) {
         String[] parts = file.split("\\.");
         return parts.length == 2 &&
                 (parts[1].equals("mp4") || parts[1].equals("avi") || parts[1].equals("webm"));
-    }
-
-    private JedisPoolConfig buildPoolConfig() {
-        final JedisPoolConfig poolConfig = new JedisPoolConfig();
-        poolConfig.setMaxTotal(32);
-        poolConfig.setMaxIdle(32);
-        poolConfig.setMinIdle(0);
-        return poolConfig;
     }
 
 
