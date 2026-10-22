@@ -35,7 +35,7 @@ public class VideoDownloader {
         String videoFullDir = VIDEO_ROOT_DIR + "/" + domain + "/" + videoDir;
         File videoFile = new File(videoFullDir + "/" + videoFilename);
         synchronized (lockManager.get(videoUrl)) {
-            if (!videoFile.exists()) {
+            if (!videoFile.exists() || videoFile.length() == 0) {
                 new File(videoFullDir).mkdirs();
                 LOGGER.info("Downloading video: {}", videoUrl);
 
